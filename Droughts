@@ -1,0 +1,68 @@
+import pandas as pd
+import numpy as np
+import xarray as xr
+from datetime import timedelta
+import datetime as dt
+import matplotlib.pyplot as plt
+from netCDF4 import Dataset
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import matplotlib.cm
+
+#Open netCDF files of daily soil mosture
+SM_mean = xr.open_mfdataset("/nfs/a68/htmq9847/SM_mean/*.nc")
+
+#Read in variables of soil moisture (Volumetric soil water layer), latitude, longitude and time
+SM = SM_mean['swvl1'][:]
+lat = SM_mean['latitude'][:]
+lon = SM_mean['longitude'][:]
+time = SM_mean['valid_time'][:]
+
+#Selecting all of the soil moisture values of the time frame
+sm = SM_mean.sel(valid_time = ((SM_mean.valid_time.dt.day >= 1) & (SM_mean.valid_time.dt.day <= 5114)))
+
+#Calculating soil moisture across a 30-day moving window mean
+thirtyday_sm = SM_mean.rolling(valid_time = 30, center = True).mean()
+
+#Calculate the 80th percentile of the soil moisture 9-day moving window 
+Percentile_sm = thirtyday_sm.quantile(0.8, dim = 'valid_time')
+
+#Calculate where the data soil moisture is less than the 80th Percentile
+sm_function = SM_mean.where((SM_mean < Percentile_sm))
+
+#Fill nan values with 0
+sm1 = sm_function.fillna(0)
+
+#Replace Soil moisture drought values with 1 
+sm2 = sm1.where((sm1 == 0.0), 1)
+
+#Calculate the difference between each successive drought soil moisture value
+diff = sm2.diff(dim='valid_time', n = 1)
+
+#Where drought event starts the difference is 1 (transition from 0 to 1) 
+drought_starts = diff.where(diff == 1)
+drought_ends = diff.where(diff == -1) #Similarly when drought ends the difference is -1 (transition from 1 to 0)
+
+#count the amount of times a drought event start
+drought_starts_number = drought_starts.count(dim = 'valid_time')
+
+#Convert to array (because for some reason it was not plotting)
+ds = drought_starts_number.to_array()
+
+# For some reason it turned into a 3D array with something called variable of 1 element so I averaged over that
+ds1 = ds.mean(dim = 'variable')
+
+# Initiate new Figure and Axes
+fig = plt.figure()
+ax1 = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson(central_longitude = 0))
+
+# Add coastlines
+ax1.coastlines()
+
+im1 = ax1.contourf(lon, lat, ds1, extend='both', transform=ccrs.PlateCarree())
+
+ax1_pos = ax1.get_position()
+cax = fig.add_axes([ax1_pos.x0, 0.1, ax1_pos.width, 0.05])
+cbar = plt.colorbar(im1, cax=cax, orientation='horizontal')
+
+plt.show()
