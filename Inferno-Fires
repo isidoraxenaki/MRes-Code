@@ -1,0 +1,46 @@
+import pandas as pd
+import numpy as np
+import xarray as xr
+from datetime import timedelta
+import datetime as dt
+import matplotlib.pyplot as plt
+from netCDF4 import Dataset
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import matplotlib.cm
+
+#Open netCDF files of daily maximum and minimum temperature
+Inferno_BAF = xr.open_dataset("/nfs/a68/htmq9847/Inferno_data/Annual_mean_burnt_area_fraction_for_HistSST_INFERNO_UKESM1_2000_2014_fract_area.nc")
+
+#Read in variables of BAF, latitude, longitude and time
+BAF = Inferno_BAF['annual_mean_burnt_area_fraction'][:]
+lat = Inferno_BAF['latitude'][:]
+lon = Inferno_BAF['longitude'][:]
+time = Inferno_BAF['time_bnds'][:]
+
+Fires_by_year = BAF.groupby('time.year')
+BAF_total = Fires_by_year.sum(dim = 'time')
+BAF_total1 = BAF_total.sum(dim = 'year')
+
+# Initiate new Figure and Axes
+fig = plt.figure()
+ax1 = fig.add_subplot(1, 1, 1, projection=ccrs.Robinson(central_longitude= 0))
+
+# Add coastlines
+ax1.coastlines()
+
+ax1.gridlines(draw_labels = True, linestyle='--')
+
+im1 = ax1.contourf(lon, lat, BAF_total1, extend='both', transform=ccrs.PlateCarree())
+
+#Define colour map position
+ax1_pos = ax1.get_position()
+
+#Position the colour bar under the map figure and arrange its width
+cax = fig.add_axes([ax1_pos.x0, 0.1, ax1_pos.width, 0.03])
+
+#Place the colour bar horizontally
+cbar = plt.colorbar(im1, cax=cax, orientation='horizontal')
+
+#Set label to colour bar
+cbar.set_label(r'Total Burnt Area Fraction', fontsize = 12)
